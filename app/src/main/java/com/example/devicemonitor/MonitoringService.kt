@@ -1,0 +1,161 @@
+package com.example.devicemonitor
+
+import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.os.IBinder
+import android.view.Choreographer
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
+
+class MonitoringService : Service() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var reportJob: Job? = null
+
+    private val persistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+
+    private var frameCount = 0
+    private val frameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            frameCount++
+            Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
+
+    val listOfTimestamp = mutableListOf<Long>()
+    val listOfBatteryTemperature = mutableListOf<Float>()
+    val listOfFps = mutableListOf<Int>()
+    val listOfBatteryPercentage = mutableListOf<Int>()
+    private lateinit var dao: RecordDao
+
+    override fun onCreate() {
+        super.onCreate()
+
+        dao = AppDatabase.getDatabase(applicationContext).recordDao()
+        startMeasuring()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_START_RECORDING -> startRecording()
+            ACTION_STOP_RECORDING -> stopRecording()
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun startMeasuring() {
+        if (reportJob != null) return
+
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+
+        reportJob = scope.launch {
+            while (isActive) {
+                delay(1000.milliseconds)
+                val currentFps = frameCount
+                frameCount = 0
+                _fps.value = currentFps
+
+                val currentBatteryPercentage = readBatteryPercentage()
+                _batteryPercentage.value = currentBatteryPercentage
+
+                val currentBatteryTemp = readBatteryTemperature()
+                if (currentBatteryTemp != null) {
+                    _batteryTemperature.value = currentBatteryTemp
+                }
+
+                if(_isRecording.value) {
+                    listOfTimestamp.add(System.currentTimeMillis())
+                    listOfFps.add(currentFps)
+                    listOfBatteryPercentage.add(currentBatteryPercentage)
+                    listOfBatteryTemperature.add(currentBatteryTemp ?: 0f)
+                }
+            }
+        }
+    }
+
+    private fun readBatteryPercentage(): Int{
+        val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: 1
+        val percentage = if (level >= 0 && scale > 0) {
+            ((level.toFloat() / scale) * 100).toInt()
+        } else {
+            -1
+        }
+        return percentage
+    }
+    private fun readBatteryTemperature(): Float?{
+        val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val tenthsOfDegree = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
+        return if (tenthsOfDegree < 0) null else tenthsOfDegree / 10.0f
+    }
+
+    private fun startRecording() {
+        if (_isRecording.value) return
+
+        listOfTimestamp.clear()
+        listOfFps.clear()
+        listOfBatteryPercentage.clear()
+        listOfBatteryTemperature.clear()
+        _isRecording.value = true
+    }
+
+    /** Ends the current recording session, saves it as one row, and demotes back from foreground. */
+    private fun stopRecording() {
+        if (!_isRecording.value) return
+
+        _isRecording.value = false
+
+        val record = Record(
+            timestamp = listOfTimestamp.toList(),
+            batteryTemperature = listOfBatteryTemperature.toList(),
+            batteryPercent = listOfBatteryPercentage.toList(),
+            fps = listOfFps.toList()
+        )
+        persistenceScope.launch {
+            dao.insert(record)
+        }
+
+        listOfTimestamp.clear()
+        listOfFps.clear()
+        listOfBatteryPercentage.clear()
+        listOfBatteryTemperature.clear()
+        _isRecording.value = false
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+    companion object {
+        const val ACTION_START_RECORDING = "com.example.counterservice.action.START_RECORDING"
+        const val ACTION_STOP_RECORDING = "com.example.counterservice.action.STOP_RECORDING"
+        private val _isRecording = MutableStateFlow(false)
+        val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+
+        // How many readings the in-progress session has captured so far.
+        private val _sessionSampleCount = MutableStateFlow(0)
+        val sessionSampleCount: StateFlow<Int> = _sessionSampleCount.asStateFlow()
+
+        private val _fps = MutableStateFlow(0)
+        val fps: StateFlow<Int> = _fps.asStateFlow()
+
+        private val _batteryPercentage = MutableStateFlow(0)
+        val batteryPercentage: StateFlow<Int> = _batteryPercentage.asStateFlow()
+
+        private val _batteryTemperature = MutableStateFlow(0f)
+        val batteryTemperature: StateFlow<Float> = _batteryTemperature.asStateFlow()
+    }
+}
