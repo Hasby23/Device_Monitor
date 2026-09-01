@@ -1,4 +1,4 @@
-//
+
 package com.example.devicemonitor
 
 import android.content.Context
@@ -9,11 +9,11 @@ import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import kotlinx.coroutines.flow.Flow
-import androidx.room.Room
 
 @Entity(tableName = "records")
 data class Record(
