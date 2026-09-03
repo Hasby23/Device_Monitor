@@ -2,31 +2,50 @@ package com.example.devicemonitor
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import androidx.compose.ui.graphics.Color
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.provider.Settings
 import android.text.format.Formatter
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -50,10 +69,18 @@ data class MemoryInfo(
     val usedRam: String = "0 B",
 )
 
+data class AppItem(
+    val appName: String,
+    val packageName: String,
+    val icon: Drawable,
+    val isSystemApp: Boolean
+)
+
 @Composable
 fun StartingScreen(
     onToggleOverlay: () -> Unit,
     onToggleRecording: () -> Unit,
+    requestPermission: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val fpsMonitor by MonitoringService.fps.collectAsState()
@@ -62,10 +89,17 @@ fun StartingScreen(
     val isAppRecording by MonitoringService.isRecording.collectAsState()
     val isAppOverlaying by MonitoringService.isOverlaying.collectAsState()
 
+    val isBinderAlive by MonitoringService.isBinderAlive.collectAsState()
+    val hasPermission by MonitoringService.hasPermission.collectAsState()
+    val commandOutput by MonitoringService.commandOutput.collectAsState()
+
     val deviceInfo = DeviceInfo()
     val context = LocalContext.current
     val storageInfo = remember { fetchStorageInfo(context) }
     val memoryInfo = remember { fetchMemoryInfo(context) }
+
+    val packageManager = LocalContext.current.packageManager
+    val listOfApps = remember { getAppInfo(packageManager) }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -191,22 +225,6 @@ fun StartingScreen(
                 .fillMaxWidth()
         ) {
             Button(
-                onClick = { onToggleRecording() },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if(isAppRecording) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    }
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = if (isAppRecording) "Stop Recording" else "Start Recording",
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-            }
-            Button(
                 onClick = { onToggleOverlay() },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if( isAppOverlaying ) {
@@ -222,6 +240,82 @@ fun StartingScreen(
                     color = MaterialTheme.colorScheme.onPrimary
                 )
             }
+
+            if (!hasPermission) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Switch(
+                        onCheckedChange = { requestPermission() },
+                        checked = false,
+                        modifier = Modifier.weight(1f),
+                    )
+
+                    Button(
+                        onClick = { onToggleRecording() },
+                        colors = ButtonDefaults.buttonColors(
+                        containerColor = if(isAppRecording) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            }
+                        ),
+                        modifier = Modifier.weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (isAppRecording) "Stop Recording" else "Start Recording",
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "Shizuku Service: $isBinderAlive"
+            )
+            Text(
+                text = "Permission: $hasPermission"
+            )
+        }
+
+        if (hasPermission){
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+            ) {
+                items(listOfApps) { app ->
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Image(
+                                bitmap = app.icon.toBitmap().asImageBitmap(),
+                                contentDescription = app.appName,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(text = app.appName)
+                                Text(text = app.packageName)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -232,6 +326,29 @@ fun formatTimestamp(epochMillis: Long): String {
     return formatter.format(Date(epochMillis))
 }
 
+fun getAppInfo(packageManager: PackageManager) : List<AppItem> {
+    val apps: List<ApplicationInfo> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        packageManager.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L))
+    } else {
+        @Suppress("DEPRECATION")
+        packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+    }
+
+    return apps.mapNotNull { appInfo ->
+        val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+
+        if (isSystem) {
+            return@mapNotNull null
+        }
+
+        AppItem(
+            appName = packageManager.getApplicationLabel(appInfo).toString(),
+            packageName = appInfo.packageName,
+            icon = packageManager.getApplicationIcon(appInfo),
+            isSystemApp = false,
+        )
+    }.sortedBy { it.appName }
+}
 
 fun fetchStorageInfo(context: Context): StorageInfo {
     val path = Environment.getDataDirectory()

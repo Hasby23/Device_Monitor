@@ -1,8 +1,11 @@
 package com.example.devicemonitor
 
+import android.content.ComponentName
 import android.content.Intent
+import android.content.ServiceConnection
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.IBinder
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,6 +23,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -30,13 +34,26 @@ import com.example.devicemonitor.ui.theme.DeviceMonitorTheme
 
 class MainActivity : ComponentActivity() {
     private val viewModel: RecordViewModel by viewModels()
+    private var boundService: MonitoringService? = null
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            boundService = (binder as MonitoringService.LocalBinder).getService()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            boundService = null
+        }
+    }
+
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         if (Settings.canDrawOverlays(this)) {
-            showOverlay()
+            boundService?.startOverlaying()
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -74,6 +91,7 @@ class MainActivity : ComponentActivity() {
                         0 -> StartingScreen(
                             onToggleRecording = { onButtonPressed() },
                             onToggleOverlay = { onOverlayButtonPressed() },
+                            requestPermission = { requestPermission() },
                             modifier = Modifier.padding(innerPadding)
                         )
                         1 -> ResultScreen(
@@ -85,33 +103,36 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onStart() {
+        super.onStart()
+        bindService(Intent(
+            this,
+            MonitoringService::class.java),
+            serviceConnection,
+            BIND_AUTO_CREATE
+        )
+    }
+    override fun onStop() {
+        super.onStop()
+        unbindService(serviceConnection)
+        boundService = null
+    }
+
     private fun onButtonPressed() {
-        if (MonitoringService.isRecording.value) {
-            stopRecording()
-        } else {
-            startRecording()
-        }
-    }
-
-    private fun startRecording() {
-        val intent = Intent(this, MonitoringService::class.java).apply {
-            action = MonitoringService.ACTION_START_RECORDING
-        }
-        startService(intent)
-    }
-
-    private fun stopRecording() {
-        val intent = Intent(this, MonitoringService::class.java).apply {
-            action = MonitoringService.ACTION_STOP_RECORDING
-        }
-        startService(intent)
+//        if (MonitoringService.isRecording.value) {
+//            boundService?.stopRecording()
+//        } else {
+//            boundService?.startRecording()
+//        }
+        boundService?.manageRecording()
     }
 
     private fun onOverlayButtonPressed() {
         if (MonitoringService.isOverlaying.value) {
-            hideOverlay()
+            boundService?.stopOverlaying()
         } else if (Settings.canDrawOverlays(this)) {
-            showOverlay()
+            boundService?.startOverlaying()
         } else {
             requestOverlayPermission()
         }
@@ -125,37 +146,22 @@ class MainActivity : ComponentActivity() {
         overlayPermissionLauncher.launch(intent)
     }
 
-    private fun showOverlay() {
-        val intent = Intent(this, MonitoringService::class.java).apply {
-            action = MonitoringService.ACTION_START_OVERLAY
-        }
-        startService(intent)
-    }
 
-    private fun hideOverlay() {
-        val intent = Intent(this, MonitoringService::class.java).apply {
-            action = MonitoringService.ACTION_STOP_OVERLAY
-        }
-        startService(intent)
-    }
-    private fun clampOverlay() {
-        val intent = Intent(this, MonitoringService::class.java).apply {
-            action = MonitoringService.ACTION_CLAMP_OVERLAY
-        }
-        startService(intent)
+    private fun requestPermission() {
+        boundService?.requestPermission()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         if (MonitoringService.isOverlaying.value){
-            hideOverlay()
+            boundService?.stopOverlaying()
         }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (MonitoringService.isOverlaying.value) {
-            clampOverlay()
+            boundService?.clampToCurrentScreen()
         }
     }
 }

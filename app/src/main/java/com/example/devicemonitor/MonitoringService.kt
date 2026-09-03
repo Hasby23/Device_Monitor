@@ -4,9 +4,12 @@ import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.BatteryManager
+import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.DisplayMetrics
@@ -27,15 +30,25 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import rikka.shizuku.Shizuku
 import kotlin.time.Duration.Companion.milliseconds
 
+
 class MonitoringService : Service() {
+    private val binder = LocalBinder()
+
+    override fun onBind(intent: Intent?): IBinder = binder
+    inner class LocalBinder : Binder() {
+        fun getService(): MonitoringService = this@MonitoringService
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var reportJob: Job? = null
     private val persistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -46,7 +59,6 @@ class MonitoringService : Service() {
             Choreographer.getInstance().postFrameCallback(this)
         }
     }
-
 
     val listOfTimestamp = mutableListOf<Long>()
     val listOfBatteryTemperature = mutableListOf<Float>()
@@ -59,7 +71,6 @@ class MonitoringService : Service() {
     private var lifecycleOwner: OverlayLifecycleOwner? = null
     private var params: WindowManager.LayoutParams? = null
 
-    /** True while the overlay window is currently on screen. */
     val isShowing: Boolean get() = composeView != null
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -69,22 +80,42 @@ class MonitoringService : Service() {
         }
     }
 
+    private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
+        _isBinderAlive.value = true
+        checkPermission()
+    }
+    private val binderDeadListener = Shizuku.OnBinderDeadListener {
+        _isBinderAlive.value = false
+        _hasPermission.value = false
+    }
+    private val permissionResultListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+        if (requestCode == SHIZUKU_PERMISSION_REQUEST_CODE) {
+            _hasPermission.value = (grantResult == PackageManager.PERMISSION_GRANTED)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         dao = AppDatabase.getDatabase(applicationContext).recordDao()
 
+        _isBinderAlive.value = Shizuku.pingBinder()
+        checkPermission()
+
+        Shizuku.addBinderReceivedListener(binderReceivedListener)
+        Shizuku.addBinderDeadListener(binderDeadListener)
+        Shizuku.addRequestPermissionResultListener(permissionResultListener)
+
         startMeasuring()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START_RECORDING -> startRecording()
-            ACTION_STOP_RECORDING -> stopRecording()
-            ACTION_START_OVERLAY -> startOverlaying()
-            ACTION_STOP_OVERLAY -> stopOverlaying()
-            ACTION_CLAMP_OVERLAY  -> clampToCurrentScreen()
-        }
-        return START_NOT_STICKY
+    override fun onDestroy() {
+        super.onDestroy()
+
+        Shizuku.removeBinderReceivedListener(binderReceivedListener)
+        Shizuku.removeBinderDeadListener(binderDeadListener)
+        Shizuku.removeRequestPermissionResultListener(permissionResultListener)
+
+        scope.cancel()
     }
 
     private fun startMeasuring() {
@@ -99,10 +130,9 @@ class MonitoringService : Service() {
                 frameCount = 0
                 _fps.value = currentFps
 
-                val currentBatteryPercentage = readBatteryPercentage()
+                val (currentBatteryPercentage, currentBatteryTemp) = readBatteryPercentAndTemp()
                 _batteryPercentage.value = currentBatteryPercentage
 
-                val currentBatteryTemp = readBatteryTemperature()
                 if (currentBatteryTemp != null) {
                     _batteryTemperature.value = currentBatteryTemp
                 }
@@ -117,7 +147,7 @@ class MonitoringService : Service() {
         }
     }
 
-    private fun readBatteryPercentage(): Int{
+    private fun readBatteryPercentAndTemp(): Pair<Int,Float?> {
         val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: 1
@@ -126,49 +156,76 @@ class MonitoringService : Service() {
         } else {
             -1
         }
-        return percentage
-    }
-    private fun readBatteryTemperature(): Float?{
-        val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
         val tenthsOfDegree = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
-        return if (tenthsOfDegree < 0) null else tenthsOfDegree / 10.0f
+
+        return Pair(percentage, if (tenthsOfDegree < 0) null else tenthsOfDegree / 10.0f)
     }
 
-    private fun startRecording() {
-        if (_isRecording.value) return
+    fun manageRecording() {
+        if (_isRecording.value) {
+            _isRecording.value = false
 
-        listOfTimestamp.clear()
-        listOfFps.clear()
-        listOfBatteryPercentage.clear()
-        listOfBatteryTemperature.clear()
-        _isRecording.value = true
-    }
+            if (listOfTimestamp.isEmpty()) return
 
-    private fun stopRecording() {
-        if (!_isRecording.value) return
+            val record = Record(
+                timestamp = listOfTimestamp.toList(),
+                batteryTemperature = listOfBatteryTemperature.toList(),
+                batteryPercent = listOfBatteryPercentage.toList(),
+                fps = listOfFps.toList()
+            )
+            persistenceScope.launch {
+                dao.insert(record)
+            }
 
-        _isRecording.value = false
+            listOfTimestamp.clear()
+            listOfFps.clear()
+            listOfBatteryPercentage.clear()
+            listOfBatteryTemperature.clear()
 
-        if (listOfTimestamp.isEmpty()) return
-
-        val record = Record(
-            timestamp = listOfTimestamp.toList(),
-            batteryTemperature = listOfBatteryTemperature.toList(),
-            batteryPercent = listOfBatteryPercentage.toList(),
-            fps = listOfFps.toList()
-        )
-        persistenceScope.launch {
-            dao.insert(record)
+        } else {
+            listOfTimestamp.clear()
+            listOfFps.clear()
+            listOfBatteryPercentage.clear()
+            listOfBatteryTemperature.clear()
+            _isRecording.value = true
         }
-
-        listOfTimestamp.clear()
-        listOfFps.clear()
-        listOfBatteryPercentage.clear()
-        listOfBatteryTemperature.clear()
     }
+//    fun startRecording() {
+//        if (_isRecording.value) return
+//
+//        listOfTimestamp.clear()
+//        listOfFps.clear()
+//        listOfBatteryPercentage.clear()
+//        listOfBatteryTemperature.clear()
+//        _isRecording.value = true
+//    }
+//
+//     fun stopRecording() {
+//        if (!_isRecording.value) return
+//
+//        _isRecording.value = false
+//
+//        if (listOfTimestamp.isEmpty()) return
+//
+//        val record = Record(
+//            timestamp = listOfTimestamp.toList(),
+//            batteryTemperature = listOfBatteryTemperature.toList(),
+//            batteryPercent = listOfBatteryPercentage.toList(),
+//            fps = listOfFps.toList()
+//        )
+//        persistenceScope.launch {
+//            dao.insert(record)
+//        }
+//
+//        listOfTimestamp.clear()
+//        listOfFps.clear()
+//        listOfBatteryPercentage.clear()
+//        listOfBatteryTemperature.clear()
+//    }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun startOverlaying() {
+     @SuppressLint("ClickableViewAccessibility")
+     fun startOverlaying() {
         if (isShowing) return
         if (_isOverlaying.value) return
 
@@ -204,7 +261,7 @@ class MonitoringService : Service() {
         windowManager?.addView(view, layoutParams)
     }
 
-    fun stopOverlaying() {
+     fun stopOverlaying() {
         if (!_isOverlaying.value) return
         val view = composeView ?: return
 
@@ -222,7 +279,7 @@ class MonitoringService : Service() {
         _isOverlaying.value = false
     }
 
-    fun clampToCurrentScreen() {
+     fun clampToCurrentScreen() {
         val view = composeView ?: return
         val layoutParams = params ?: return
         val (screenWidth, screenHeight) = realScreenSize()
@@ -269,9 +326,7 @@ class MonitoringService : Service() {
         return metrics.widthPixels to metrics.heightPixels
     }
 
-    private inner class DragToMoveListener(
-        private val params: WindowManager.LayoutParams
-    ) : View.OnTouchListener {
+    private inner class DragToMoveListener(private val params: WindowManager.LayoutParams) : View.OnTouchListener {
         private var startParamX = 0
         private var startParamY = 0
         private var startTouchX = 0f
@@ -280,9 +335,7 @@ class MonitoringService : Service() {
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouch(v: View, event: MotionEvent): Boolean {
             when (event.action) {
-//                fun isLandscape(context: Context): Boolean {
-//                    return context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-//                }
+
                 MotionEvent.ACTION_DOWN -> {
                     startParamX = params.x
                     startParamY = params.y
@@ -308,14 +361,31 @@ class MonitoringService : Service() {
         }
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
-    companion object {
-        const val ACTION_START_RECORDING = "com.example.counterservice.action.START_RECORDING"
-        const val ACTION_STOP_RECORDING = "com.example.counterservice.action.STOP_RECORDING"
-        const val ACTION_START_OVERLAY = "com.example.counterservice.action.START_OVERLAY"
-        const val ACTION_STOP_OVERLAY = "com.example.counterservice.action.STOP_OVERLAY"
-        const val ACTION_CLAMP_OVERLAY = "com.example.counterservice.action.CLAMP_OVERLAY"
+    fun checkPermission(): Boolean {
+        if (Shizuku.isPreV11()) {
+            _hasPermission.value = false
+            return false
+        }
+        val granted = try {
+            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        } catch (_: Exception) {
+            false
+        }
+        _hasPermission.value = granted
+        return granted
+    }
 
+    fun requestPermission() {
+        if (!Shizuku.isPreV11()) {
+            try {
+                Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
+            } catch (e: Exception) {
+                _commandOutput.value = "Error requesting permission: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    companion object {
         private val _isRecording = MutableStateFlow(false)
         val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
@@ -330,5 +400,13 @@ class MonitoringService : Service() {
 
         private val _isOverlaying = MutableStateFlow(false)
         val isOverlaying: StateFlow<Boolean> = _isOverlaying.asStateFlow()
+
+        const val SHIZUKU_PERMISSION_REQUEST_CODE = 1001
+        private val _isBinderAlive = MutableStateFlow(false)
+        val isBinderAlive: StateFlow<Boolean> = _isBinderAlive.asStateFlow()
+        private val _hasPermission = MutableStateFlow(false)
+        val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
+        private val _commandOutput = MutableStateFlow("")
+        val commandOutput: StateFlow<String> = _commandOutput.asStateFlow()
     }
 }
