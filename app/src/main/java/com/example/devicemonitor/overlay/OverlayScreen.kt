@@ -17,7 +17,8 @@ import androidx.compose.foundation.layout.Row
 fun OverlayReadoutView(
     fps: Int,
     batteryTemp: Float?,
-    batteryPercent: Int
+    batteryPercent: Int,
+    appName: String,
 ) {
     Row(
         modifier = Modifier
@@ -29,16 +30,25 @@ fun OverlayReadoutView(
         Text(
             text = "$fps fps",
             color = Color.White,
+            fontSize = 10.sp
         )
-        Text(text = "  •  ", color = Color(0x88FFFFFF), fontSize = 18.sp)
+        Text(text = "  •  ", color = Color(0x88FFFFFF))
         Text(
             text = if (batteryTemp != null) "%.1f°C".format(batteryTemp) else "—",
             color = Color.White,
+            fontSize = 10.sp
         )
-        Text(text = "  •  ", color = Color(0x88FFFFFF), fontSize = 18.sp)
+        Text(text = "  •  ", color = Color(0x88FFFFFF))
         Text(
             text = "$batteryPercent%",
             color = Color.White,
+            fontSize = 10.sp
+        )
+        Text(text = "  •  ", color = Color(0x88FFFFFF))
+        Text(
+            text = appName,
+            color = Color.White,
+            fontSize = 10.sp
         )
     }
 }

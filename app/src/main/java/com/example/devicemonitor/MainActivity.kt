@@ -23,7 +23,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -89,7 +88,7 @@ class MainActivity : ComponentActivity() {
                 ) { innerPadding ->
                     when (selectIndex) {
                         0 -> StartingScreen(
-                            onToggleRecording = { onButtonPressed() },
+                            onToggleRecording = { onRecordButtonPressed() },
                             onToggleOverlay = { onOverlayButtonPressed() },
                             requestPermission = { requestPermission() },
                             modifier = Modifier.padding(innerPadding)
@@ -119,12 +118,7 @@ class MainActivity : ComponentActivity() {
         boundService = null
     }
 
-    private fun onButtonPressed() {
-//        if (MonitoringService.isRecording.value) {
-//            boundService?.stopRecording()
-//        } else {
-//            boundService?.startRecording()
-//        }
+    private fun onRecordButtonPressed() {
         boundService?.manageRecording()
     }
 

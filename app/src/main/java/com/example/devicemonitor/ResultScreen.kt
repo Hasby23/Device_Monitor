@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun ResultScreen(
@@ -73,7 +74,7 @@ fun ResultScreen(
                         ) {
                             Column(modifier = Modifier) {
                                 Text(
-                                    text = "Timestamp: ${formatTimestamp(record.timestamp.first())}",
+                                    text = "Start: ${formatTimestamp(record.timestamp.first())}, Duration: ${(record.timestamp.last() - record.timestamp.first()).milliseconds}",
                                     modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 4.dp)
                                 )
                                 Text(
@@ -83,8 +84,8 @@ fun ResultScreen(
 
                                 )
                                 Text(
-                                    text = "Temperature: ${record.batteryTemperature.first()}°C " +
-                                            "to ${record.batteryTemperature.last()}°C",
+                                    text = "Temperature: ${record.batteryTemperature.min()}°C " +
+                                            "to ${record.batteryTemperature.max()}°C",
                                     modifier = Modifier.padding(horizontal = 4.dp)
                                 )
                                 Text(
@@ -149,8 +150,16 @@ fun DetailScreen(
                 )
             ) {
                 Text(
-                    text = "Timestamp: ${formatTimestamp(record.timestamp.first())}",
+                    text = "Start: ${formatTimestamp(record.timestamp.first())}",
                     modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 4.dp)
+                )
+                Text(
+                    text = "End: ${formatTimestamp(record.timestamp.last())}",
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+                Text(
+                    text = "Duration: ${(record.timestamp.last() - record.timestamp.first()).milliseconds}",
+                    modifier = Modifier.padding(horizontal = 4.dp)
                 )
                 Text(
                     text = "Battery: ${record.batteryPercent.first()}% " +
@@ -159,8 +168,8 @@ fun DetailScreen(
 
                 )
                 Text(
-                    text = "Temperature: ${record.batteryTemperature.first()}°C " +
-                            "to ${record.batteryTemperature.last()}°C",
+                    text = "Temperature: ${record.batteryTemperature.min()}°C " +
+                            "to ${record.batteryTemperature.max()}°C",
                     modifier = Modifier.padding(horizontal = 4.dp)
                 )
                 Text(
