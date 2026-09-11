@@ -57,7 +57,7 @@ com.example.devicemonitor/
 1. Clone the repository:
    ```bash
    git clone <project>
-   cd DeviceMonitor
+   cd <project name>
    ```
 
 2. Open the project in **Android Studio**.
