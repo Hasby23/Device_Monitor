@@ -294,8 +294,6 @@ class MonitoringService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
-        // Gravity.TOP/START + explicit x/y makes the offset math for dragging simple:
-        // x and y are just absolute pixel offsets from the top-left of the screen.
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
