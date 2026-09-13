@@ -1,22 +1,22 @@
-# 📱 Device Monitor
+# Device Monitor
 
 **Device Monitor** is a native Android application for real-time system performance monitoring, hardware metric tracking, and telemetry recording.
 
 ---
 
-## ✨ Features
+## Features
 
-- 📱 **Device & Hardware Information**: Displays manufacturer name, device model, System-on-Chip (SoC) hardware specs, and Android OS version.
-- 🔋 **Battery Telemetry**: Real-time tracking of battery charge percentage (%) and battery temperature (°C) via system broadcast receivers.
-- ⚡ **Frame Rate (FPS) Monitoring**: Measure fps using Android's `Choreographer` frame callbacks or `adb dumpsys SurfaceFlinger` command when using Shizuku for more accurate result.
-- 💾 **Storage & Memory Diagnostics**: Real-time monitoring of total and used internal storage and RAM.
-- 🔴 **Session Performance Recorder**: Sample telemetry metrics (timestamps, FPS, battery levels, temperatures) every second and persist them locally.
-- 📜 **Session History & Analytics**: View saved performance recording sessions, browse detailed session stats, and delete obsolete entries.
-- 🖼️ **Floating Overlay HUD**: Compact floating readout view for FPS, temperature, battery level, and active app overlay when using Shizuku.
+- **Device & Hardware Information**: Displays manufacturer name, device model, System-on-Chip (SoC) hardware specs, and Android OS version.
+- **Battery Telemetry**: Real-time tracking of battery charge percentage (%) and battery temperature (°C) via system broadcast receivers.
+- **Frame Rate (FPS) Monitoring**: Measure fps using Android's `Choreographer` frame callbacks or `adb dumpsys SurfaceFlinger` command when using Shizuku for more accurate result.
+- **Storage & Memory Diagnostics**: Real-time monitoring of total and used internal storage and RAM.
+- **Session Performance Recorder**: Sample telemetry metrics (timestamps, FPS, battery levels, temperatures) every second and persist them locally.
+- **Session History & Analytics**: View saved performance recording sessions, browse detailed session stats, and delete obsolete entries.
+- **Floating Overlay HUD**: Compact floating readout view for FPS, temperature, battery level, and active app overlay when using Shizuku.
 
 ---
 
-## 🛠️ Tech Stack & Architecture
+## Tech Stack & Architecture
 
 - **Language**: [Kotlin](https://kotlinlang.org/)
 - **UI Framework**: [Jetpack Compose](https://developer.android.com/jetpack/compose) with Material Design 3
@@ -25,7 +25,7 @@
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 com.example.devicemonitor/
@@ -43,7 +43,7 @@ com.example.devicemonitor/
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
