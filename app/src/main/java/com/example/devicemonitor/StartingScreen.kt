@@ -259,7 +259,11 @@ fun StartingScreen(
 }
 
 
-fun formatTimestamp(epochMillis: Long): String {
+fun formatTimestamp(epochMillis: Long, noTime: Boolean = false): String {
+    if (noTime) {
+        val formatter = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+        return formatter.format(Date(epochMillis))
+    }
     val formatter = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault())
     return formatter.format(Date(epochMillis))
 }

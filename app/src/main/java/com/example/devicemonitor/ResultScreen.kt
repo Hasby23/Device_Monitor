@@ -1,6 +1,7 @@
 package com.example.devicemonitor
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -72,9 +74,9 @@ fun ResultScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier) {
+                            Column(modifier = Modifier.weight(7f)) {
                                 Text(
-                                    text = "Start: ${formatTimestamp(record.timestamp.first())}, Duration: ${(record.timestamp.last() - record.timestamp.first()).milliseconds}",
+                                    text = "Start: ${formatTimestamp(record.timestamp.first(), true)}, Duration: ${(record.timestamp.last() - record.timestamp.first()).milliseconds}",
                                     modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 4.dp)
                                 )
                                 Text(
@@ -98,12 +100,12 @@ fun ResultScreen(
                                     modifier = Modifier.padding(start = 4.dp, bottom = 4.dp, end = 4.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.weight(1f))
                             IconButton(
                                 onClick = { viewModel.deleteRecord(record) },
                                 colors = IconButtonDefaults.iconButtonColors(
                                     contentColor = MaterialTheme.colorScheme.error),
-                                modifier = Modifier.align(Alignment.Bottom)
+                                modifier = Modifier.weight(1f)
+                                    .align(Alignment.Bottom)
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Delete,
