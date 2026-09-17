@@ -18,28 +18,9 @@ class RecordViewModel(application: Application) : AndroidViewModel(application) 
             initialValue = emptyList()
         )
 
-    fun addRecord(timestamp: List<Long>, batteryTemperature: List<Float>, batteryPercent: List<Int>, fps: List<Int>) {
-        val record = Record(
-            timestamp = timestamp,
-            batteryTemperature = batteryTemperature,
-            batteryPercent = batteryPercent,
-            fps = fps
-        )
-
-        viewModelScope.launch {
-            dao.insert(record)
-        }
-    }
-
     fun deleteRecord(record: Record) {
         viewModelScope.launch {
             dao.delete(record)
-        }
-    }
-
-    fun clearAll() {
-        viewModelScope.launch {
-            dao.clearAll()
         }
     }
 }

@@ -3,7 +3,6 @@ package com.example.devicemonitor
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
-import android.content.res.Configuration
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
@@ -149,13 +148,6 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         if (MonitoringService.isOverlaying.value){
             boundService?.stopOverlaying()
-        }
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        if (MonitoringService.isOverlaying.value) {
-            boundService?.clampToCurrentScreen()
         }
     }
 }

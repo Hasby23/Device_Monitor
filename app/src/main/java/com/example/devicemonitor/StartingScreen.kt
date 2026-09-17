@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -32,16 +31,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-data class DeviceInfo(
-    val manufacturerName: String = Build.MANUFACTURER,
-    val modelName: String = Build.MODEL,
-    val socName: String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        Build.SOC_MODEL
-    } else {
-        Build.HARDWARE
-    },
-    val androidVersion: String = Build.VERSION.RELEASE,
-)
 data class StorageInfo(
     val totalStorage: String = "0 B",
     val usedStorage: String = "0 B",
@@ -58,9 +47,10 @@ fun StartingScreen(
     requestPermission: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val fpsMonitor by MonitoringService.fps.collectAsState()
-    val batteryPercentageMonitor by MonitoringService.batteryPercentage.collectAsState()
-    val batteryTemperatureMonitor by MonitoringService.batteryTemperature.collectAsState()
+    val fps by MonitoringService.fps.collectAsState()
+    val batteryPercentage by MonitoringService.batteryPercentage.collectAsState()
+    val batteryTemperature by MonitoringService.batteryTemperature.collectAsState()
+
     val isAppRecording by MonitoringService.isRecording.collectAsState()
     val isAppOverlaying by MonitoringService.isOverlaying.collectAsState()
 
@@ -68,7 +58,6 @@ fun StartingScreen(
     val hasPermission by MonitoringService.hasPermission.collectAsState()
     val targetQuery by MonitoringService.targetQuery.collectAsState()
 
-    val deviceInfo = DeviceInfo()
     val context = LocalContext.current
     val storageInfo = remember { fetchStorageInfo(context) }
     val memoryInfo = remember { fetchMemoryInfo(context) }
@@ -79,123 +68,44 @@ fun StartingScreen(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                contentColor = MaterialTheme.colorScheme.onSurface
-            )
-        ) {
+        Card(modifier = Modifier.fillMaxWidth(),) {
             Column() {
                 Text(
-                    text = "Device: ${deviceInfo.manufacturerName} ${deviceInfo.modelName}",
+                    text = "Device: ${Build.MANUFACTURER} ${Build.MODEL}",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(4.dp)
                 )
                 Text(
-                    text = "SoC: ${deviceInfo.socName}",
+                    text = "SoC: ${if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        Build.SOC_MODEL
+                    } else {
+                        Build.HARDWARE
+                    }}",
                     modifier = Modifier.padding(horizontal = 4.dp)
                 )
                 Text(
-                    text = "Android ${deviceInfo.androidVersion} ",
+                    text = "Android ${Build.VERSION.RELEASE} ",
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp)
                 )
             }
         }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier.weight(1f),
+        CardRow(
+            text1 = "Battery: ${if (batteryPercentage >= 0) "${batteryPercentage}%" else "Unavailable"}",
+            text2 = "Temperature: $batteryTemperature °C",
+            text3 = "FPS:",
+            text4 = "$fps"
+        )
+        CardRow(
+            text1 = "Storage used: ${storageInfo.usedStorage}",
+            text2 = "Storage total: ${storageInfo.totalStorage}",
+            text3 = "Ram used: ${memoryInfo.usedRam}",
+            text4 = "Ram Total: ${memoryInfo.totalRam}"
+        )
 
-            ) {
-                Column() {
-                    Text(
-                        text = "Battery: ${if (batteryPercentageMonitor >= 0) "${batteryPercentageMonitor}%" else "Unavailable"}",
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = "Temperature: $batteryTemperatureMonitor °C",
-                        modifier = Modifier.padding(4.dp)
-                    )
-                }
-            }
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Column() {
-                    Text(
-                        text = "FPS:",
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = "$fpsMonitor",
-                        modifier = Modifier.padding(4.dp)
-                    )
-                }
-            }
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier.weight(1f),
-
-                ) {
-                Column() {
-                    Text(
-                        text = "Storage used: ${storageInfo.usedStorage}",
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = "Storage total: ${storageInfo.totalStorage}",
-                        modifier = Modifier.padding(4.dp)
-                    )
-                }
-            }
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Column() {
-                    Text(
-                        text = "Ram used: ${memoryInfo.usedRam}",
-                        modifier = Modifier.padding(4.dp)
-                    )
-                    Text(
-                        text = "Ram Total: ${memoryInfo.totalRam}",
-                        modifier = Modifier.padding(4.dp)
-                    )
-                }
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = { onToggleOverlay() },
                 colors = ButtonDefaults.buttonColors(
@@ -214,9 +124,7 @@ fun StartingScreen(
             }
 
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = { onToggleRecording() },
                     colors = ButtonDefaults.buttonColors(
@@ -242,9 +150,7 @@ fun StartingScreen(
             }
         }
 
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = "Shizuku Service: $isBinderAlive"
             )
@@ -258,6 +164,43 @@ fun StartingScreen(
     }
 }
 
+@Composable
+fun CardRow(
+    text1: String,
+    text2: String,
+    text3: String,
+    text4: String,
+){
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Card(modifier = Modifier.weight(1f)) {
+            Column {
+                Text(
+                    text = text1,
+                    modifier = Modifier.padding(4.dp)
+                )
+                Text(
+                    text = text2,
+                    modifier = Modifier.padding(4.dp)
+                )
+            }
+        }
+        Card(modifier = Modifier.weight(1f)) {
+            Column {
+                Text(
+                    text = text3,
+                    modifier = Modifier.padding(4.dp)
+                )
+                Text(
+                    text = text4,
+                    modifier = Modifier.padding(4.dp)
+                )
+            }
+        }
+    }
+}
 
 fun formatTimestamp(epochMillis: Long, noTime: Boolean = false): String {
     if (noTime) {

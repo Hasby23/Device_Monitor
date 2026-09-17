@@ -3,19 +3,11 @@
     xmlns:tools="http://schemas.android.com/tools">
 
 
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Required alongside a specific foregroundServiceType; "specialUse" is the
-         catch-all type for services that don't fit the predefined categories
-         (location, camera, mediaPlayback, etc.) -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- Required on Android 13+ to show the foreground service's notification -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Required to draw the system-wide overlay -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
+        tools:ignore="ForegroundServicesPolicy" />
+
+    <!-- Overlay -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
 
     <application
         android:allowBackup="true"
@@ -41,8 +33,7 @@
 
         <service
             android:name=".MonitoringService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:exported="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="framerate_demo" />

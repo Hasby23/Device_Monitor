@@ -1,11 +1,9 @@
 package com.example.devicemonitor
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -47,7 +44,6 @@ fun ResultScreen(
     ) {
         if (selectedRecord != null){
             DetailScreen(
-                modifier = modifier,
                 onBack = { selectedRecord = null},
                 record = selectedRecord!!
             )
@@ -61,10 +57,6 @@ fun ResultScreen(
                 items(records, key = { it.id }) { record ->
                     Card(
                         onClick = { selectedRecord = record },
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                            contentColor = MaterialTheme.colorScheme.onSurface
-                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                     ) {
@@ -104,7 +96,8 @@ fun ResultScreen(
                                 onClick = { viewModel.deleteRecord(record) },
                                 colors = IconButtonDefaults.iconButtonColors(
                                     contentColor = MaterialTheme.colorScheme.error),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
                                     .align(Alignment.Bottom)
                             ) {
                                 Icon(
@@ -129,7 +122,7 @@ fun DetailScreen(
         onBack()
     }
     Column(
-        modifier = Modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize()
     ) {
         IconButton(
             onClick =  onBack,
@@ -140,7 +133,8 @@ fun DetailScreen(
             )
         }
         Column(
-            modifier = Modifier.padding(8.dp)
+            modifier = Modifier
+                .padding(8.dp)
                 .fillMaxSize()
         ) {
             Card(

@@ -1,31 +1,16 @@
 package com.example.devicemonitor
 
-import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.graphics.PixelFormat
 import android.os.BatteryManager
 import android.os.Binder
-import android.os.Build
 import android.os.IBinder
-import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Choreographer
-import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
-import android.view.WindowManager
-import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.platform.ComposeView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import com.example.devicemonitor.overlay.OverlayLifecycleOwner
-import com.example.devicemonitor.overlay.OverlayReadoutView
+import com.example.devicemonitor.overlay.OverlayClass
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,16 +35,10 @@ class MonitoringService : Service() {
         fun getService(): MonitoringService = this@MonitoringService
     }
 
+    private val overlay = OverlayClass()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var reportJob: Job? = null
     private val persistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var frameCount = 0
-    private val frameCallback = object : Choreographer.FrameCallback {
-        override fun doFrame(frameTimeNanos: Long) {
-            frameCount++
-            Choreographer.getInstance().postFrameCallback(this)
-        }
-    }
 
     val listOfTimestamp = mutableListOf<Long>()
     val listOfBatteryTemperature = mutableListOf<Float>()
@@ -67,12 +46,6 @@ class MonitoringService : Service() {
     val listOfBatteryPercentage = mutableListOf<Int>()
     private lateinit var dao: RecordDao
 
-    private var windowManager: WindowManager? = null
-    private var composeView: ComposeView? = null
-    private var lifecycleOwner: OverlayLifecycleOwner? = null
-    private var params: WindowManager.LayoutParams? = null
-
-    val isShowing: Boolean get() = composeView != null
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         _isBinderAlive.value = true
@@ -115,10 +88,17 @@ class MonitoringService : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (isOverlaying.value) {
-            clampToCurrentScreen()
+            overlay.clampToCurrentScreen()
         }
     }
 
+    private var frameCount = 0
+    private val frameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            frameCount++
+            Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
     private fun startMeasuring() {
         if (reportJob != null) return
 
@@ -212,144 +192,20 @@ class MonitoringService : Service() {
             listOfFps.clear()
             listOfBatteryPercentage.clear()
             listOfBatteryTemperature.clear()
+
             _isRecording.value = true
         }
     }
 
-     @SuppressLint("ClickableViewAccessibility")
-     fun startOverlaying() {
-        if (isShowing) return
+    fun startOverlaying() {
         if (_isOverlaying.value) return
-
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-
-        val owner = OverlayLifecycleOwner().apply {
-            performRestore(null)
-            handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-            handleLifecycleEvent(Lifecycle.Event.ON_START)
-            handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        }
-        lifecycleOwner = owner
-
-        val layoutParams = buildLayoutParams()
-        params = layoutParams
-
-        val view = ComposeView(this)
-        view.setViewTreeLifecycleOwner(owner)
-        view.setViewTreeSavedStateRegistryOwner(owner)
-        view.setViewTreeViewModelStoreOwner(owner)
-        view.setContent {
-            OverlayReadoutView(
-                fps = _fps.collectAsState().value,
-                batteryTemp = _batteryTemperature.collectAsState().value,
-                batteryPercent = _batteryPercentage.collectAsState().value,
-                appName = _targetQuery.collectAsState().value
-            )
-        }
-        view.setOnTouchListener(DragToMoveListener(layoutParams))
-        composeView = view
-
+        overlay.startOverlaying(this)
         _isOverlaying.value = true
-
-        windowManager?.addView(view, layoutParams)
     }
-
-     fun stopOverlaying() {
+    fun stopOverlaying() {
         if (!_isOverlaying.value) return
-        val view = composeView ?: return
-
-        lifecycleOwner?.apply {
-            handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-            handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-            handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        }
-        windowManager?.removeView(view)
-
-        composeView = null
-        lifecycleOwner = null
-        params = null
-
+        overlay.stopOverlaying()
         _isOverlaying.value = false
-    }
-
-     fun clampToCurrentScreen() {
-        val view = composeView ?: return
-        val layoutParams = params ?: return
-        val (screenWidth, screenHeight) = realScreenSize()
-
-        val maxX = (screenWidth - view.width).coerceAtLeast(0)
-        val maxY = (screenHeight - view.height).coerceAtLeast(0)
-
-        layoutParams.x = layoutParams.x.coerceIn(0, maxX)
-        layoutParams.y = layoutParams.y.coerceIn(0, maxY)
-
-        windowManager?.updateViewLayout(view, layoutParams)
-    }
-
-    private fun buildLayoutParams(): WindowManager.LayoutParams {
-        val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
-
-        return WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            layoutType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 100
-            y = 200
-        }
-    }
-
-    private fun realScreenSize(): Pair<Int, Int> {
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        windowManager?.defaultDisplay?.getRealMetrics(metrics)
-        return metrics.widthPixels to metrics.heightPixels
-    }
-
-    private inner class DragToMoveListener(private val params: WindowManager.LayoutParams) : View.OnTouchListener {
-        private var startParamX = 0
-        private var startParamY = 0
-        private var startTouchX = 0f
-        private var startTouchY = 0f
-
-        @SuppressLint("ClickableViewAccessibility")
-        override fun onTouch(v: View, event: MotionEvent): Boolean {
-            when (event.action) {
-
-                MotionEvent.ACTION_DOWN -> {
-                    startParamX = params.x
-                    startParamY = params.y
-                    startTouchX = event.rawX
-                    startTouchY = event.rawY
-                    return true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val (screenWidth, screenHeight) = realScreenSize()
-                    val maxX = (screenWidth - v.width).coerceAtLeast(0)
-                    val maxY = (screenHeight - v.height).coerceAtLeast(0)
-
-                    val newX = startParamX + (event.rawX - startTouchX).toInt()
-                    val newY = startParamY + (event.rawY - startTouchY).toInt()
-
-                    params.x = newX.coerceIn(0, maxX)
-                    params.y = newY.coerceIn(0, maxY)
-                    windowManager?.updateViewLayout(v, params)
-                    return true
-                }
-            }
-            return false
-        }
     }
 
     fun checkPermission(): Boolean {
@@ -375,7 +231,6 @@ class MonitoringService : Service() {
             }
         }
     }
-
 
     @Suppress("DEPRECATION")
     private suspend fun runShizukuCommand(command: String): String = withContext(Dispatchers.IO) {
