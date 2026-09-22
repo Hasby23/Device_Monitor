@@ -60,7 +60,7 @@ com.example.devicemonitor/
 * **JDK**: Java 11 or 17
 * **Minimum SDK**: API 24 (Android 7.0)
 * **Target SDK**: API 37
-* **(Optional) Shizuku**: Installed and running on the test device for advanced SurfaceFlinger stats and floating HUD overlay features.
+* **(Optional) Shizuku**: Installed and running on the test device for advanced SurfaceFlinger stats
 
 ### Building the App
 
