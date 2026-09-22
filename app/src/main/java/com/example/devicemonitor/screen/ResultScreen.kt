@@ -1,7 +1,8 @@
-package com.example.devicemonitor
+package com.example.devicemonitor.screen
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -28,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.devicemonitor.db.Record
+import com.example.devicemonitor.db.RecordViewModel
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
@@ -36,17 +40,26 @@ fun ResultScreen(
     modifier: Modifier = Modifier
 ) {
     val records by viewModel.records.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
     var selectedRecord by remember { mutableStateOf<Record?>(null) }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
+        modifier = modifier.fillMaxSize()
     ) {
         if (selectedRecord != null){
             DetailScreen(
                 onBack = { selectedRecord = null},
                 record = selectedRecord!!
             )
+        } else if (isLoading) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                CircularProgressIndicator()
+
+            }
         } else {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),

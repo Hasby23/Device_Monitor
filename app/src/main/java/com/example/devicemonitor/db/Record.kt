@@ -1,5 +1,4 @@
-
-package com.example.devicemonitor
+package com.example.devicemonitor.db
 
 import android.content.Context
 import androidx.room.Dao

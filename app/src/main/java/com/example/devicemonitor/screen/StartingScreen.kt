@@ -1,4 +1,4 @@
-package com.example.devicemonitor
+package com.example.devicemonitor.screen
 
 import android.app.ActivityManager
 import android.content.Context
@@ -18,7 +18,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -27,6 +26,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.devicemonitor.repository.AppRepository
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,16 +48,17 @@ fun StartingScreen(
     requestPermission: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val fps by MonitoringService.fps.collectAsState()
-    val batteryPercentage by MonitoringService.batteryPercentage.collectAsState()
-    val batteryTemperature by MonitoringService.batteryTemperature.collectAsState()
+    val fps by AppRepository.fps.collectAsStateWithLifecycle()
+    val batteryPercentage by AppRepository.batteryPercentage.collectAsStateWithLifecycle()
+    val batteryTemperature by AppRepository.batteryTemperature.collectAsStateWithLifecycle()
 
-    val isAppRecording by MonitoringService.isRecording.collectAsState()
-    val isAppOverlaying by MonitoringService.isOverlaying.collectAsState()
+    val isAppOverlaying by AppRepository.isOverlaying.collectAsStateWithLifecycle()
+    val isAppRecording by AppRepository.isRecording.collectAsStateWithLifecycle()
 
-    val isBinderAlive by MonitoringService.isBinderAlive.collectAsState()
-    val hasPermission by MonitoringService.hasPermission.collectAsState()
-    val targetQuery by MonitoringService.targetQuery.collectAsState()
+    // SHIZUKU
+    val hasPermission by AppRepository.hasPermission.collectAsStateWithLifecycle()
+    val isBinderAlive by AppRepository.isBinderAlive.collectAsStateWithLifecycle()
+    val targetQuery by AppRepository.targetQuery.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val storageInfo = remember { fetchStorageInfo(context) }
@@ -68,8 +70,8 @@ fun StartingScreen(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Card(modifier = Modifier.fillMaxWidth(),) {
-            Column() {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column {
                 Text(
                     text = "Device: ${Build.MANUFACTURER} ${Build.MODEL}",
                     fontSize = 24.sp,

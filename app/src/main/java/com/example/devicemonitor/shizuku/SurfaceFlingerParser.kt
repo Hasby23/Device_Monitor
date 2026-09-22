@@ -1,4 +1,4 @@
-package com.example.devicemonitor
+package com.example.devicemonitor.shizuku
 
 data class SurfaceFlingerLayerStats(
     val layerName: String,

@@ -1,10 +1,7 @@
 package com.example.devicemonitor
 
-import android.content.ComponentName
 import android.content.Intent
-import android.content.ServiceConnection
 import android.os.Bundle
-import android.os.IBinder
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -28,34 +25,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.net.toUri
+import com.example.devicemonitor.db.RecordViewModel
+import com.example.devicemonitor.repository.AppRepository
+import com.example.devicemonitor.screen.ResultScreen
+import com.example.devicemonitor.screen.StartingScreen
 import com.example.devicemonitor.ui.theme.DeviceMonitorTheme
 
 class MainActivity : ComponentActivity() {
     private val viewModel: RecordViewModel by viewModels()
-    private var boundService: MonitoringService? = null
-
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            boundService = (binder as MonitoringService.LocalBinder).getService()
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            boundService = null
-        }
-    }
-
-    private val overlayPermissionLauncher = registerForActivityResult(
+    val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         if (Settings.canDrawOverlays(this)) {
-            boundService?.startOverlaying()
+            val intent = Intent(this, MonitoringService::class.java).apply {
+                action = MonitoringService.ACTION_START_OVERLAYING
+            }
+            startService(intent)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        startService(Intent(this, MonitoringService::class.java))
+        val intent = Intent(this, MonitoringService::class.java).apply {
+            action = MonitoringService.ACTION_START_COUNTING
+        }
+        startService(intent)
 
         enableEdgeToEdge()
         setContent {
@@ -89,7 +84,7 @@ class MainActivity : ComponentActivity() {
                         0 -> StartingScreen(
                             onToggleRecording = { onRecordButtonPressed() },
                             onToggleOverlay = { onOverlayButtonPressed() },
-                            requestPermission = { requestPermission() },
+                            requestPermission = { requestShizukuPermission() },
                             modifier = Modifier.padding(innerPadding)
                         )
                         1 -> ResultScreen(
@@ -102,30 +97,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        bindService(Intent(
-            this,
-            MonitoringService::class.java),
-            serviceConnection,
-            BIND_AUTO_CREATE
-        )
-    }
-    override fun onStop() {
-        super.onStop()
-        unbindService(serviceConnection)
-        boundService = null
-    }
-
     private fun onRecordButtonPressed() {
-        boundService?.manageRecording()
+        val intent = Intent(this, MonitoringService::class.java)
+        if (AppRepository.isRecording.value) {
+            intent.action = MonitoringService.ACTION_STOP_RECORDING
+        } else {
+            intent.action = MonitoringService.ACTION_START_RECORDING
+        }
+        startService(intent)
     }
 
     private fun onOverlayButtonPressed() {
-        if (MonitoringService.isOverlaying.value) {
-            boundService?.stopOverlaying()
+        if (AppRepository.isOverlaying.value) {
+            val intent = Intent(this, MonitoringService::class.java).apply {
+                action = MonitoringService.ACTION_STOP_OVERLAYING
+            }
+            startService(intent)
         } else if (Settings.canDrawOverlays(this)) {
-            boundService?.startOverlaying()
+            val intent = Intent(this, MonitoringService::class.java).apply {
+                action = MonitoringService.ACTION_START_OVERLAYING
+            }
+            startService(intent)
         } else {
             requestOverlayPermission()
         }
@@ -136,18 +128,14 @@ class MainActivity : ComponentActivity() {
             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
             "package:$packageName".toUri()
         )
+
         overlayPermissionLauncher.launch(intent)
     }
 
-
-    private fun requestPermission() {
-        boundService?.requestPermission()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        if (MonitoringService.isOverlaying.value){
-            boundService?.stopOverlaying()
+    private fun requestShizukuPermission() {
+        val intent = Intent(this, MonitoringService::class.java).apply {
+            action = MonitoringService.ACTION_REQUEST_SHIZUKU_PERMISSION
         }
+        startService(intent)
     }
 }

@@ -10,15 +10,15 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import com.example.devicemonitor.MonitoringService
+import com.example.devicemonitor.repository.AppRepository
 
-class OverlayClass() {
+class OverlayManager {
     private var windowManager: WindowManager? = null
     private var lifecycleOwner: OverlayLifecycleOwner? = null
     private var params: WindowManager.LayoutParams? = null
@@ -50,10 +50,10 @@ class OverlayClass() {
         view.setViewTreeViewModelStoreOwner(owner)
         view.setContent {
             OverlayReadoutView(
-                fps = MonitoringService.fps.collectAsState().value,
-                batteryTemp = MonitoringService.batteryTemperature.collectAsState().value,
-                batteryPercent = MonitoringService.batteryPercentage.collectAsState().value,
-                appName = MonitoringService.targetQuery.collectAsState().value
+                fps = AppRepository.fps.collectAsStateWithLifecycle().value,
+                batteryTemp = AppRepository.batteryTemperature.collectAsStateWithLifecycle().value,
+                batteryPercent = AppRepository.batteryPercentage.collectAsStateWithLifecycle().value,
+                appName = AppRepository.targetQuery.collectAsStateWithLifecycle().value,
             )
         }
         view.setOnTouchListener(DragToMoveListener(layoutParams))

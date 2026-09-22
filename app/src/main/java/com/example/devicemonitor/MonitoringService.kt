@@ -3,92 +3,78 @@ package com.example.devicemonitor
 import android.app.Service
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.BatteryManager
-import android.os.Binder
 import android.os.IBinder
-import android.util.Log
 import android.view.Choreographer
-import com.example.devicemonitor.overlay.OverlayClass
+import com.example.devicemonitor.db.AppDatabase
+import com.example.devicemonitor.db.Record
+import com.example.devicemonitor.db.RecordDao
+import com.example.devicemonitor.overlay.OverlayManager
+import com.example.devicemonitor.repository.AppRepository
+import com.example.devicemonitor.shizuku.ShizukuManager
+import com.example.devicemonitor.shizuku.SurfaceFlingerParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import rikka.shizuku.Shizuku
 import kotlin.time.Duration.Companion.milliseconds
 
 
 class MonitoringService : Service() {
-    private val binder = LocalBinder()
-
-    override fun onBind(intent: Intent?): IBinder = binder
-    inner class LocalBinder : Binder() {
-        fun getService(): MonitoringService = this@MonitoringService
-    }
-
-    private val overlay = OverlayClass()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var reportJob: Job? = null
+    override fun onBind(intent: Intent?): IBinder? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val persistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    val listOfTimestamp = mutableListOf<Long>()
-    val listOfBatteryTemperature = mutableListOf<Float>()
-    val listOfFps = mutableListOf<Int>()
-    val listOfBatteryPercentage = mutableListOf<Int>()
+    private val overlayManager = OverlayManager()
+    private val shizukuManager = ShizukuManager()
+
+    private val listOfTimestamp = mutableListOf<Long>()
+    private val listOfBatteryTemperature = mutableListOf<Float>()
+    private val listOfFps = mutableListOf<Int>()
+    private val listOfBatteryPercentage = mutableListOf<Int>()
+
     private lateinit var dao: RecordDao
-
-
-    private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        _isBinderAlive.value = true
-        checkPermission()
-    }
-    private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        _isBinderAlive.value = false
-        _hasPermission.value = false
-    }
-    private val permissionResultListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
-        if (requestCode == SHIZUKU_PERMISSION_REQUEST_CODE) {
-            _hasPermission.value = (grantResult == PackageManager.PERMISSION_GRANTED)
-        }
-    }
 
     override fun onCreate() {
         super.onCreate()
+
         dao = AppDatabase.getDatabase(applicationContext).recordDao()
-
-        _isBinderAlive.value = Shizuku.pingBinder()
-        checkPermission()
-
-        Shizuku.addBinderReceivedListener(binderReceivedListener)
-        Shizuku.addBinderDeadListener(binderDeadListener)
-        Shizuku.addRequestPermissionResultListener(permissionResultListener)
-
-        startMeasuring()
+        shizukuManager.start()
     }
 
     override fun onDestroy() {
         super.onDestroy()
 
-        Shizuku.removeBinderReceivedListener(binderReceivedListener)
-        Shizuku.removeBinderDeadListener(binderDeadListener)
-        Shizuku.removeRequestPermissionResultListener(permissionResultListener)
+        serviceScope.cancel()
+        shizukuManager.stop()
+    }
 
-        scope.cancel()
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        stopSelf()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_START_COUNTING -> startMeasuring()
+            ACTION_START_OVERLAYING -> startOverlaying()
+            ACTION_STOP_OVERLAYING -> stopOverlaying()
+            ACTION_START_RECORDING -> startRecording()
+            ACTION_STOP_RECORDING -> stopRecording()
+            ACTION_REQUEST_SHIZUKU_PERMISSION -> requestShizukuPermission()
+        }
+        return START_NOT_STICKY
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (isOverlaying.value) {
-            overlay.clampToCurrentScreen()
+        if (AppRepository.isOverlaying.value) {
+            overlayManager.clampToCurrentScreen()
         }
     }
 
@@ -99,54 +85,58 @@ class MonitoringService : Service() {
             Choreographer.getInstance().postFrameCallback(this)
         }
     }
+
+    private var serviceJob: Job? = null
     private fun startMeasuring() {
-        if (reportJob != null) return
+        if (serviceJob != null) return
 
         Choreographer.getInstance().postFrameCallback(frameCallback)
 
-        reportJob = scope.launch {
+        serviceJob = serviceScope.launch {
             while (isActive) {
-                Log.d("MyTag", "start loop")
-                if (_hasPermission.value) {
-                    Shizuku.newProcess(
-                        arrayOf("sh", "-c", "dumpsys SurfaceFlinger --timestats -clear -enable"),
-                        null,
-                        null
+                val (currentBatteryPercentage, currentBatteryTemp) = readBatteryPercentAndTemp()
+
+                if (AppRepository.hasPermission.value) {
+                    shizukuManager.runShizukuCommand("dumpsys SurfaceFlinger --timestats -clear -enable")
+                    val targetApp = shizukuManager.runShizukuCommand("dumpsys window | grep -Eo 'mCurrentFocus=Window\\{[a-f0-9]+ [^ ]+ [^/]+' | grep -Eo '[^ ]+$'").filterNot { it.isWhitespace() }
+
+                    delay(850.milliseconds)
+
+                    val result = shizukuManager.runShizukuCommand("dumpsys SurfaceFlinger --timestats -dump")
+                    shizukuManager.runShizukuCommand("dumpsys SurfaceFlinger --timestats -disable")
+
+                    val currentFps = SurfaceFlingerParser.parseTotalFrames(result, targetApp)?.toInt() ?: 0
+
+                    frameCount = 0
+
+                    AppRepository.updateValue(
+                        fps = currentFps,
+                        batteryPercentage = currentBatteryPercentage,
+                        batteryTemperature = currentBatteryTemp ?: 0.0f,
+                        appName = targetApp
                     )
-                    delay(910.milliseconds)
-
-                    val (currentBatteryPercentage, currentBatteryTemp) = readBatteryPercentAndTemp()
-                    _batteryPercentage.value = currentBatteryPercentage
-                    _batteryTemperature.value = currentBatteryTemp ?: 0.0f
-
-                    val result = runShizukuCommand("dumpsys SurfaceFlinger --timestats -dump")
-                    Shizuku.newProcess(
-                        arrayOf("sh", "-c", "dumpsys SurfaceFlinger --timestats -disable"),
-                        null,
-                        null
-                    )
-                    _targetQuery.value = runShizukuCommand("dumpsys window | grep -Eo 'mCurrentFocus=Window\\{[a-f0-9]+ [^ ]+ [^/]+' | grep -Eo '[^ ]+$'").filterNot { it.isWhitespace() }
-
-                    val desiredOutput = SurfaceFlingerParser.parseTotalFrames(result, _targetQuery.value)
-                    _fps.value = desiredOutput?.toInt() ?: 0
                 } else {
                     delay(1000.milliseconds)
 
-                    val (currentBatteryPercentage, currentBatteryTemp) = readBatteryPercentAndTemp()
-                    _batteryPercentage.value = currentBatteryPercentage
-                    _batteryTemperature.value = currentBatteryTemp ?: 0.0f
-
                     val currentFps = frameCount
+                    val targetApp = " "
+
                     frameCount = 0
-                    _fps.value = currentFps
+
+                    AppRepository.updateValue(
+                        fps = currentFps,
+                        batteryPercentage = currentBatteryPercentage,
+                        batteryTemperature = currentBatteryTemp ?: 0.0f,
+                        appName = targetApp
+                    )
                 }
-                if(_isRecording.value) {
+
+                if (AppRepository.isRecording.value) {
                     listOfTimestamp.add(System.currentTimeMillis())
-                    listOfFps.add(_fps.value)
-                    listOfBatteryPercentage.add(_batteryPercentage.value)
-                    listOfBatteryTemperature.add(_batteryTemperature.value)
+                    listOfFps.add(AppRepository.fps.value)
+                    listOfBatteryPercentage.add(AppRepository.batteryPercentage.value)
+                    listOfBatteryTemperature.add(AppRepository.batteryTemperature.value)
                 }
-                Log.d("MyTag", "finish loop")
             }
         }
     }
@@ -166,118 +156,59 @@ class MonitoringService : Service() {
         return Pair(percentage, if (tenthsOfDegree < 0) null else tenthsOfDegree / 10.0f)
     }
 
-    fun manageRecording() {
-        if (_isRecording.value) {
-            _isRecording.value = false
+    fun startRecording() {
+        listOfTimestamp.clear()
+        listOfFps.clear()
+        listOfBatteryPercentage.clear()
+        listOfBatteryTemperature.clear()
 
-            if (listOfTimestamp.isEmpty()) return
+        AppRepository.setRecord(true)
+    }
 
-            val record = Record(
-                timestamp = listOfTimestamp.toList(),
-                batteryTemperature = listOfBatteryTemperature.toList(),
-                batteryPercent = listOfBatteryPercentage.toList(),
-                fps = listOfFps.toList()
-            )
-            persistenceScope.launch {
-                dao.insert(record)
-            }
+    fun stopRecording() {
+        AppRepository.setRecord(false)
 
-            listOfTimestamp.clear()
-            listOfFps.clear()
-            listOfBatteryPercentage.clear()
-            listOfBatteryTemperature.clear()
+        if (listOfTimestamp.isEmpty()) return
 
-        } else {
-            listOfTimestamp.clear()
-            listOfFps.clear()
-            listOfBatteryPercentage.clear()
-            listOfBatteryTemperature.clear()
-
-            _isRecording.value = true
+        val recordSession = Record(
+            timestamp = listOfTimestamp.toList(),
+            batteryTemperature = listOfBatteryTemperature.toList(),
+            batteryPercent = listOfBatteryPercentage.toList(),
+            fps = listOfFps.toList()
+        )
+        persistenceScope.launch {
+            dao.insert(recordSession)
         }
+
+        listOfTimestamp.clear()
+        listOfFps.clear()
+        listOfBatteryPercentage.clear()
+        listOfBatteryTemperature.clear()
     }
 
     fun startOverlaying() {
-        if (_isOverlaying.value) return
-        overlay.startOverlaying(this)
-        _isOverlaying.value = true
+        overlayManager.startOverlaying(this)
+        AppRepository.setOverlay(true)
     }
     fun stopOverlaying() {
-        if (!_isOverlaying.value) return
-        overlay.stopOverlaying()
-        _isOverlaying.value = false
+        overlayManager.stopOverlaying()
+        AppRepository.setOverlay(false)
     }
 
-    fun checkPermission(): Boolean {
-        if (Shizuku.isPreV11()) {
-            _hasPermission.value = false
-            return false
-        }
-        val granted = try {
-            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-        } catch (_: Exception) {
-            false
-        }
-        _hasPermission.value = granted
-        return granted
-    }
-
-    fun requestPermission() {
-        if (!Shizuku.isPreV11()) {
-            try {
-                Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
-            } catch (e: Exception) {
-                _commandOutput.value = "Error requesting permission: ${e.localizedMessage}"
-            }
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    private suspend fun runShizukuCommand(command: String): String = withContext(Dispatchers.IO) {
-        try {
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            val error = process.errorStream.bufferedReader().use { it.readText() }
-            val exitCode = process.waitFor()
-
-            buildString {
-                if (output.isNotBlank()) append(output)
-                if (error.isNotBlank()) {
-                    if (isNotEmpty()) append("\n-- Error Stream --\n")
-                    append(error)
-                }
-                if (isEmpty()) append("Command finished with exit code $exitCode (No output)")
-            }
-        } catch (e: Exception) {
-            "Error: ${e.localizedMessage}"
-        }
+    fun requestShizukuPermission() {
+        shizukuManager.requestPermission()
     }
 
     companion object {
-        private val _isRecording = MutableStateFlow(false)
-        val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+        const val ACTION_START_COUNTING = "ACTION_START_COUNTING"
 
-        private val _fps = MutableStateFlow(0)
-        val fps: StateFlow<Int> = _fps.asStateFlow()
+        const val ACTION_START_OVERLAYING = "ACTION_START_OVERLAYING"
+        const val ACTION_STOP_OVERLAYING = "ACTION_STOP_OVERLAYING"
 
-        private val _batteryPercentage = MutableStateFlow(0)
-        val batteryPercentage: StateFlow<Int> = _batteryPercentage.asStateFlow()
+        const val ACTION_START_RECORDING = "ACTION_START_RECORDING"
+        const val ACTION_STOP_RECORDING = "ACTION_STOP_RECORDING"
 
-        private val _batteryTemperature = MutableStateFlow(0f)
-        val batteryTemperature: StateFlow<Float> = _batteryTemperature.asStateFlow()
+        const val ACTION_REQUEST_SHIZUKU_PERMISSION = "ACTION_REQUEST_SHIZUKU_PERMISSION"
 
-        private val _isOverlaying = MutableStateFlow(false)
-        val isOverlaying: StateFlow<Boolean> = _isOverlaying.asStateFlow()
-
-        const val SHIZUKU_PERMISSION_REQUEST_CODE = 1001
-        private val _isBinderAlive = MutableStateFlow(false)
-        val isBinderAlive: StateFlow<Boolean> = _isBinderAlive.asStateFlow()
-        private val _hasPermission = MutableStateFlow(false)
-        val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
-
-        private val _commandOutput = MutableStateFlow("")
-        val commandOutput: StateFlow<String> = _commandOutput.asStateFlow()
-        private val _targetQuery = MutableStateFlow("")
-        val targetQuery: StateFlow<String> = _targetQuery.asStateFlow()
     }
 }
