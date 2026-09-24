@@ -43,10 +43,10 @@ data class MemoryInfo(
 
 @Composable
 fun StartingScreen(
+    modifier: Modifier = Modifier,
     onToggleOverlay: () -> Unit,
     onToggleRecording: () -> Unit,
     requestPermission: () -> Unit,
-    modifier: Modifier = Modifier
 ) {
     val fps by AppRepository.fps.collectAsStateWithLifecycle()
     val batteryPercentage by AppRepository.batteryPercentage.collectAsStateWithLifecycle()
@@ -55,7 +55,7 @@ fun StartingScreen(
     val isAppOverlaying by AppRepository.isOverlaying.collectAsStateWithLifecycle()
     val isAppRecording by AppRepository.isRecording.collectAsStateWithLifecycle()
 
-    // SHIZUKU
+    // Shizuku
     val hasPermission by AppRepository.hasPermission.collectAsStateWithLifecycle()
     val isBinderAlive by AppRepository.isBinderAlive.collectAsStateWithLifecycle()
     val targetQuery by AppRepository.targetQuery.collectAsStateWithLifecycle()
@@ -130,7 +130,7 @@ fun StartingScreen(
                 Button(
                     onClick = { onToggleRecording() },
                     colors = ButtonDefaults.buttonColors(
-                    containerColor = if(isAppRecording) {
+                        containerColor = if(isAppRecording) {
                             MaterialTheme.colorScheme.error
                         } else {
                             MaterialTheme.colorScheme.primary
@@ -165,6 +165,7 @@ fun StartingScreen(
         }
     }
 }
+
 
 @Composable
 fun CardRow(

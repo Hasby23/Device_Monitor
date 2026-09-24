@@ -4,6 +4,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+data class RecordedData (
+    val fps: Int,
+    val batteryPercentage: Int,
+    val batteryTemperature: Float,
+    val appName: String,
+)
+
 object AppRepository {
     /* Overlay */
     private val _isOverlaying = MutableStateFlow(false)
@@ -39,11 +46,11 @@ object AppRepository {
         _isRecording.value = recordState
     }
 
-    fun updateValue(fps: Int, batteryPercentage: Int, batteryTemperature: Float, appName: String) {
-        _fps.value = fps
-        _batteryPercentage.value = batteryPercentage
-        _batteryTemperature.value = batteryTemperature
-        _targetQuery.value = appName
+    fun updateValue(recordedData: RecordedData) {
+        _fps.value = recordedData.fps
+        _batteryPercentage.value = recordedData.batteryPercentage
+        _batteryTemperature.value = recordedData.batteryTemperature
+        _targetQuery.value = recordedData.appName
     }
 
     fun setBinder(binderState: Boolean) {

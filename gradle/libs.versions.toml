@@ -11,9 +11,6 @@ composeBom = "2026.09.00"
 
 room = "2.8.5"
 ksp = "2.3.10"
-roomCommon = "2.8.5"
-foundation = "1.12.1"
-workRuntimeKtx = "2.11.2"
 
 api = "13.0.0"
 provider = "13.0.0"
@@ -39,9 +36,6 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
-androidx-room-common = { group = "androidx.room", name = "room-common", version.ref = "roomCommon" }
-androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
-androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
 
 api = { module = "dev.rikka.shizuku:api", version.ref = "api" }
 provider = { module = "dev.rikka.shizuku:provider", version.ref = "provider" }

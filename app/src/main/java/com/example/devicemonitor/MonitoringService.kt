@@ -12,6 +12,7 @@ import com.example.devicemonitor.db.Record
 import com.example.devicemonitor.db.RecordDao
 import com.example.devicemonitor.overlay.OverlayManager
 import com.example.devicemonitor.repository.AppRepository
+import com.example.devicemonitor.repository.RecordedData
 import com.example.devicemonitor.shizuku.ShizukuManager
 import com.example.devicemonitor.shizuku.SurfaceFlingerParser
 import kotlinx.coroutines.CoroutineScope
@@ -22,8 +23,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.system.measureTimeMillis
 import kotlin.time.Duration.Companion.milliseconds
-
 
 class MonitoringService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
@@ -37,6 +39,7 @@ class MonitoringService : Service() {
     private val listOfBatteryTemperature = mutableListOf<Float>()
     private val listOfFps = mutableListOf<Int>()
     private val listOfBatteryPercentage = mutableListOf<Int>()
+    private val listOfAppName = mutableListOf<String>()
 
     private lateinit var dao: RecordDao
 
@@ -78,8 +81,8 @@ class MonitoringService : Service() {
         }
     }
 
-    private var frameCount = 0
-    private val frameCallback = object : Choreographer.FrameCallback {
+    var frameCount = 0
+    val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             frameCount++
             Choreographer.getInstance().postFrameCallback(this)
@@ -93,42 +96,31 @@ class MonitoringService : Service() {
         Choreographer.getInstance().postFrameCallback(frameCallback)
 
         serviceJob = serviceScope.launch {
+            val interval = 1000L
+
             while (isActive) {
-                val (currentBatteryPercentage, currentBatteryTemp) = readBatteryPercentAndTemp()
+                var dataCaptured: RecordedData? = null
 
-                if (AppRepository.hasPermission.value) {
-                    shizukuManager.runShizukuCommand("dumpsys SurfaceFlinger --timestats -clear -enable")
-                    val targetApp = shizukuManager.runShizukuCommand("dumpsys window | grep -Eo 'mCurrentFocus=Window\\{[a-f0-9]+ [^ ]+ [^/]+' | grep -Eo '[^ ]+$'").filterNot { it.isWhitespace() }
+                val executionTime = measureTimeMillis {
+                    dataCaptured = withTimeoutOrNull(950L.milliseconds) {
+                        fetchData()
+                    }
+                }
 
-                    delay(850.milliseconds)
-
-                    val result = shizukuManager.runShizukuCommand("dumpsys SurfaceFlinger --timestats -dump")
-                    shizukuManager.runShizukuCommand("dumpsys SurfaceFlinger --timestats -disable")
-
-                    val currentFps = SurfaceFlingerParser.parseTotalFrames(result, targetApp)?.toInt() ?: 0
-
-                    frameCount = 0
-
-                    AppRepository.updateValue(
-                        fps = currentFps,
-                        batteryPercentage = currentBatteryPercentage,
-                        batteryTemperature = currentBatteryTemp ?: 0.0f,
-                        appName = targetApp
+                if (dataCaptured == null) {
+                    dataCaptured = RecordedData(
+                        fps = 0,
+                        batteryPercentage = 0,
+                        batteryTemperature = 0.0f,
+                        appName = "No Data Captured"
                     )
-                } else {
-                    delay(1000.milliseconds)
+                }
 
-                    val currentFps = frameCount
-                    val targetApp = " "
+                AppRepository.updateValue(dataCaptured)
 
-                    frameCount = 0
-
-                    AppRepository.updateValue(
-                        fps = currentFps,
-                        batteryPercentage = currentBatteryPercentage,
-                        batteryTemperature = currentBatteryTemp ?: 0.0f,
-                        appName = targetApp
-                    )
+                val timeToDelay = interval - executionTime
+                if (timeToDelay > 0) {
+                    delay(timeToDelay.milliseconds)
                 }
 
                 if (AppRepository.isRecording.value) {
@@ -136,8 +128,44 @@ class MonitoringService : Service() {
                     listOfFps.add(AppRepository.fps.value)
                     listOfBatteryPercentage.add(AppRepository.batteryPercentage.value)
                     listOfBatteryTemperature.add(AppRepository.batteryTemperature.value)
+                    listOfAppName.add(AppRepository.targetQuery.value)
                 }
             }
+        }
+    }
+
+    private suspend fun fetchData() : RecordedData {
+        val (currentBatteryPercentage, currentBatteryTemp) = readBatteryPercentAndTemp()
+
+        if (AppRepository.hasPermission.value) {
+            shizukuManager.runShizukuCommand("dumpsys SurfaceFlinger --timestats -clear -enable")
+            val targetApp = shizukuManager.runShizukuCommand("dumpsys window | grep -Eo 'mCurrentFocus=Window\\{[a-f0-9]+ [^ ]+ [^/]+' | grep -Eo '[^ ]+$'").filterNot { it.isWhitespace() }
+
+            val result = shizukuManager.runShizukuCommand("dumpsys SurfaceFlinger --timestats -dump")
+            shizukuManager.runShizukuCommand("dumpsys SurfaceFlinger --timestats -disable")
+
+            val currentFps = SurfaceFlingerParser.parseTotalFrames(result, targetApp)?.toInt() ?: 0
+
+            frameCount = 0
+
+            return RecordedData(
+                fps = currentFps,
+                batteryPercentage = currentBatteryPercentage,
+                batteryTemperature = currentBatteryTemp ?: 0.0f,
+                appName = targetApp
+            )
+        } else {
+            val currentFps = frameCount
+            val targetApp = "Shizuku Not Active"
+
+            frameCount = 0
+
+            return RecordedData(
+                fps = currentFps,
+                batteryPercentage = currentBatteryPercentage,
+                batteryTemperature = currentBatteryTemp ?: 0.0f,
+                appName = targetApp
+            )
         }
     }
 
@@ -161,6 +189,7 @@ class MonitoringService : Service() {
         listOfFps.clear()
         listOfBatteryPercentage.clear()
         listOfBatteryTemperature.clear()
+        listOfAppName.clear()
 
         AppRepository.setRecord(true)
     }
@@ -174,7 +203,8 @@ class MonitoringService : Service() {
             timestamp = listOfTimestamp.toList(),
             batteryTemperature = listOfBatteryTemperature.toList(),
             batteryPercent = listOfBatteryPercentage.toList(),
-            fps = listOfFps.toList()
+            fps = listOfFps.toList(),
+            appName = listOfAppName.toList()
         )
         persistenceScope.launch {
             dao.insert(recordSession)
@@ -184,6 +214,7 @@ class MonitoringService : Service() {
         listOfFps.clear()
         listOfBatteryPercentage.clear()
         listOfBatteryTemperature.clear()
+        listOfAppName.clear()
     }
 
     fun startOverlaying() {
@@ -209,6 +240,5 @@ class MonitoringService : Service() {
         const val ACTION_STOP_RECORDING = "ACTION_STOP_RECORDING"
 
         const val ACTION_REQUEST_SHIZUKU_PERMISSION = "ACTION_REQUEST_SHIZUKU_PERMISSION"
-
     }
 }

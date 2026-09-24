@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -57,14 +56,10 @@ class MainActivity : ComponentActivity() {
             DeviceMonitorTheme {
                 var selectIndex by remember { mutableIntStateOf(0) }
                 Scaffold(
-                    containerColor = MaterialTheme.colorScheme.background,
                     modifier = Modifier
                         .fillMaxSize(),
                     bottomBar = {
-                        NavigationBar(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ) {
+                        NavigationBar {
                             NavigationBarItem(
                                 selected = selectIndex == 0,
                                 onClick = { selectIndex = 0 },
@@ -88,7 +83,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding)
                         )
                         1 -> ResultScreen(
-                            viewModel,
+                            viewModel = viewModel,
                             modifier = Modifier.padding(innerPadding)
                         )
                     }

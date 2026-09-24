@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -22,7 +23,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,17 +30,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.devicemonitor.db.Record
 import com.example.devicemonitor.db.RecordViewModel
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun ResultScreen(
-    viewModel: RecordViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: RecordViewModel
 ) {
-    val records by viewModel.records.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val records by viewModel.records.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     var selectedRecord by remember { mutableStateOf<Record?>(null) }
 
     Column(
@@ -135,7 +136,8 @@ fun DetailScreen(
         onBack()
     }
     Column(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
+            .fillMaxSize()
     ) {
         IconButton(
             onClick =  onBack,
@@ -153,10 +155,6 @@ fun DetailScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurface
-                )
             ) {
                 Text(
                     text = "Start: ${formatTimestamp(record.timestamp.first())}",
@@ -184,12 +182,31 @@ fun DetailScreen(
                 Text(
                     text = "Frame Rate: ${record.fps.min()} FPS " +
                             "to ${record.fps.max()} FPS",
-                    modifier = Modifier.padding(start = 4.dp, end = 4.dp)
+                    modifier = Modifier.padding(horizontal = 4.dp)
                 )
                 Text(
                     text = "Size: ${record.timestamp.size}, ${record.batteryPercent.size}, ${record.batteryTemperature.size}, ${record.fps.size}, ",
-                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp, end = 4.dp)
+                    modifier = Modifier.padding(horizontal = 4.dp)
                 )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(),
+            ) {
+                Text(
+                    text = "Unique App:",
+//                    text = "Unique App: ${record.appName.groupingBy { it }.eachCount()}",
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+                LazyColumn() {
+                    items(record.appName.distinct()) {
+                        Text(
+                            text = it,
+                            modifier = Modifier.padding(start = 4.dp, end = 4.dp)
+                        )
+                    }
+                }
             }
         }
     }

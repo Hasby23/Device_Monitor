@@ -21,6 +21,7 @@ data class Record(
     val batteryTemperature: List<Float>,
     val batteryPercent: List<Int>,
     val fps: List<Int>,
+    val appName: List<String>
 )
 
 class Converters {
@@ -47,6 +48,14 @@ class Converters {
     fun toIntList(value: String): List<Int> =
         if (value.isBlank()) emptyList()
         else value.split(",").mapNotNull { it.trim().toIntOrNull() }
+
+    @TypeConverter
+    fun fromStringList(value: List<String>): String = value.joinToString(",")
+
+    @TypeConverter
+    fun toStringList(value: String): List<String> =
+        if (value.isBlank()) emptyList()
+        else value.split(",").map { it.trim() }
 }
 
 @Dao
